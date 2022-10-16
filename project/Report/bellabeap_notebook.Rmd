@@ -1,0 +1,382 @@
+---
+title: "Bellabeat"
+author: "Alejandro Dinas"
+date: "2022-10-12"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# About bellabeat
+
+![](images/paste-B253652D.png)
+
+Bellabeat is a successful small high-tech company that manufactures health-focused smart products for women.
+
+# Importing the libraries
+
+In this section we're going to import the required library to carry out the data analysis and data cleaning operations.
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+
+```
+
+# Importing the datasets
+
+In this section we're going to import the data for our research. We'll import activity, calories and sleep related data in a daily and hourly bases in order to have a better picture of customer's activities.
+
+```{r}
+
+daily_data <- read_csv("C:/Users/Alejandro Dinas.DESKTOP-B98QDHD/Documents/google project/Fitabase Data 4.12.16-5.12.16/fitness_data.csv")
+
+daily_sleep <- read_csv("C:/Users/Alejandro Dinas.DESKTOP-B98QDHD/Documents/google project/Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv")
+
+hourly_sleep <- read_csv("C:/Users/Alejandro Dinas.DESKTOP-B98QDHD/Documents/google project/Fitabase Data 4.12.16-5.12.16/minuteSleep_merged.csv")
+
+hourly_steps <- read_csv("C:/Users/Alejandro Dinas.DESKTOP-B98QDHD/Documents/google project/Fitabase Data 4.12.16-5.12.16/hourlySteps_merged.csv")
+
+hourly_calories <- read_csv("C:/Users/Alejandro Dinas.DESKTOP-B98QDHD/Documents/google project/Fitabase Data 4.12.16-5.12.16/hourlyCalories_merged.csv")
+```
+
+# Cleaning process
+
+Deploy basic information about the datasets such as the number of rows, unique records and look for NULL values.
+
+```{r}
+# We count the Id's, because this is the dataset primary key or unique record.
+n_distinct(daily_data$Id)
+n_distinct(daily_sleep$Id)
+
+n_distinct(hourly_sleep$Id)
+n_distinct(hourly_calories$Id)
+n_distinct(hourly_steps$Id)
+```
+
+As we can see, sleep records weren't recorded for all participants, yet the datasets is still useful.
+
+## Adjusting Formatting
+
+We're going to adjust the format of the date data.
+
+```{r}
+# Set our system in english if it isn't
+Sys.setlocale("LC_TIME", "en_US")
+
+# Hourly data
+hourly_calories$ActivityHour <- as.POSIXct(hourly_calories$ActivityHour, format="%m/%d/%Y %I:%M:%S %p")
+
+hourly_sleep$date <- as.POSIXct(hourly_sleep$date, format="%m/%d/%Y %I:%M:%S %p")
+
+hourly_steps$ActivityHour<- as.POSIXct(hourly_steps$ActivityHour, format="%m/%d/%Y %I:%M:%S %p")
+
+hourly_sleep <- mutate(hourly_sleep, shour = hour(hourly_sleep$date))
+
+# Daily data
+daily_sleep$SleepDay <-as.Date(daily_sleep$SleepDay, format = "%m/%d/%Y")
+
+# Separate the columns, because the separator was "//"
+# Merged columns again, but with the "/" separator
+daily_data2 <- daily_data %>% 
+  separate(date, c("day", "Month", "year")) %>% 
+  unite(col = "date", c("day", "Month", "year") ,sep = "/")
+  
+daily_data2$date <- as.Date(daily_data2$date, format = "%m/%d/%Y")
+
+# Remove the first dataset to save memory space.
+rm(daily_data)
+
+```
+
+We want to see the days of the week when people sleep more or make more physical activity, therefore, we must retrieve the day of the week from the date.
+
+```{r}
+# Getting the days of the week and the hours
+
+hourly_steps <- mutate(hourly_steps, act_hour = hour(hourly_steps$ActivityHour))
+
+daily_data2 <- mutate(daily_data2, day = weekdays(daily_data2$date))
+
+daily_sleep <- mutate(daily_sleep, day = weekdays(daily_sleep$SleepDay))
+
+
+# Sort the days of the week
+daily_data2$day <- ordered(daily_data2$day, levels=c("Monday", "Tuesday", "Wednesday", "Thursday", 
+"Friday", "Saturday", "Sunday"))
+
+
+daily_sleep$day <- ordered(daily_sleep$day, levels=c("Monday", "Tuesday", "Wednesday", "Thursday", 
+"Friday", "Saturday", "Sunday"))
+
+# Converting sleep minutes to sleep hours
+daily_sleep <- mutate(daily_sleep, hours = daily_sleep$TotalMinutesAsleep/60)
+```
+
+```{r}
+# Take a peak of daily basis data (Null values, stats summary)
+skim_without_charts(daily_data2)
+skim_without_charts(daily_sleep)
+
+```
+
+# Activity analysis
+
+Physical activity is an important element for Bellabeat app. In this case we're going to use the data that measures the key aspects of physical activity such as:
+
+-   Total steps
+
+-   Intense activity ( Exercise)
+
+-   Sedentary activity in minutes
+
+    The number of steps is a good proxy for physical activity, as it's [the most popular way of exercising](https://www.insider.com/popular-exercise-methods-around-the-world-2018-11) according to the bureau of statistics.
+
+```{r}
+# Average steps 
+daily_data2 %>%
+    select (TotalSteps,VeryActiveMinutes,LightlyActiveMinutes, SedentaryMinutes  ) %>% 
+  summary()
+
+```
+
+-   the customers tend to be sedentary, spending on average, 738 minutes in sedentary activity.
+
+-   Most of the clients spend 8 minutes in very active physical activity.
+
+-   The customers walk, on average 8582 steps, however 25% of the them walked less than 4676 steps per day. In a 2020 study found that participants who took 8,000 steps per day had a [51% lower riskTrusted Source](https://www.cdc.gov/media/releases/2020/p0324-daily-step-count.html) of dying by any cause compared with those who took 4,000 per day.
+
+<!-- -->
+
+On the other hand, is useful to know the days when the customers tend to walk more or less according to the date, as people tend to adopt healthy habits when they're not busy.
+
+In the next chart we can see the distribution of the daily steps walked by customers.
+
+```{r}
+mean_step_day <- daily_data2 %>% 
+  group_by(day) %>% 
+  summarise ( median_steps = median(TotalSteps))
+
+mean_step_day %>% 
+  ggplot() + geom_bar(aes(x = day, y = median_steps), stat = "identity") +
+  labs(title = "Mean daily steps") + xlab("") + ylab("")
+```
+
+-   Our customers make more physical activity the first two days of the week
+
+-   Physical activity is less in the weekends
+
+    ### Analysis by hours
+
+The analysis in a daily basis enables to spot patterns in the daily use of bellabeat users, nonetheless, to get a better picture of bellabeat users activity we should check the hourly activity to answer the following questions:
+
+-   What are the hours when people exercise the most?
+
+-   At what times are they sedentary?
+
+    Let's inspect our data.
+
+    ```{r}
+    hourly_steps %>% 
+      select(StepTotal) %>% 
+      summary()
+    ```
+
+    ```{r}
+
+    hourly_steps %>% 
+      group_by(act_hour) %>% 
+      summarize(med_hour = median(StepTotal)) %>% 
+      
+      ggplot(aes(x = act_hour, y =med_hour )) + 
+      geom_histogram(stat = "identity", fill = "blue4") + 
+      labs(title = "Distribution of physical activity") + 
+      ylab("Median number of steps") + xlab("Hours") +
+      theme(plot.title = element_text(hjust = 0.5))
+    ```
+
+-   bellabeat users walk, on average 320 steps in an hourly basis. The median and the mean are different, which means the data is right-skewed, but this skewness is normal, because of sleep hours.
+
+-   bellabeat users are more active between 7:00 AM and 8 PM.
+
+-   After 5:00 PM people is more active, because most people leave their workplaces in that time span and go out for jogging or to the gym.
+
+## Activity suggestions
+
+-   Bellabeap should use notifications warning about the dangers of being sedentary and also showing the benefits of exercising.
+
+-   Bellabeap should adopt a recompense systems to encourage more customers to exercise, as people are driven by incentives.
+
+-   Bellabeap should make bellabeat users to exercise more on weekends.
+
+-   ![](https://www.hhmglobal.com/wp-content/uploads/news/29784/Exersize.jpg)
+
+# Calories analysis
+
+In the following section will analyze the calories burnt by day and in an hourly basis. We can answer some questions about the calories such as:
+
+1.  What is the average amount of calories bellabeat users burnt?
+
+2.  When are the calories burnt the most?
+
+3.  How can we advise bellabeat users to burn calories efficiently and keep them controlled with a healthy diet?
+
+    ### Daily Calories
+
+    The summary statistics display key metrics to know the data better.
+
+    ```{r}
+    daily_data2 %>% 
+      select(Calories) %>% 
+      summary()
+    ```
+
+A histogram can show the behavior and distribution of calories data in a daily basis.
+
+```{r}
+daily_data2 %>% 
+  group_by(day) %>% 
+  summarise(median_calories = median(Calories)) %>% 
+  ggplot(aes(x =day, y = median_calories)) +
+  geom_histogram(stat = "identity", fill = "blue4") +
+  labs(title = "Daily calories burnt") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("Calories burnt") + xlab("")
+```
+
+-   bellabeat user burn on average 2162 calories. Human body [burns 1800 calories to keep working everyday](https://www.goodto.com/wellbeing/diets-exercise/what-is-calorie-how-many-lose-weigt-425557) as claimed by medical sources.
+
+-   bellabeat users burn most calories than the average citizen in a daily basis. Calories burning fit a uniform distribution, which could imply that most of bellabeat users exercise more or have healthy diets.
+
+-   bellabeat users burn more calories on Tuesday and Friday.
+
+    ### Hourly analysis
+
+    In the firs place, we have to extract the hours from the time stamp data.
+
+    ```{r}
+    hourly_calories <- mutate(hourly_calories, 
+                      hourcal = hour(hourly_calories$ActivityHour))
+    ```
+
+    Statistics on hourly basis describe the calories burning from bellabeat users.
+
+    ```{r}
+    hourly_calories %>% 
+      select(Calories) %>% 
+      summary()
+
+    ```
+
+A histogram will help to identify the hours when bellabeat users burn the most calories.
+
+```{r}
+hourly_calories %>% 
+group_by(hourcal) %>% 
+  summarise(median_cal = median(Calories)) %>% 
+  ggplot(aes(x = hourcal, y = median_cal)) +
+  geom_histogram(stat = "identity", fill = "blue4") +
+  labs(title = "hourly calories burnt") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("Calories burnt") + xlab("")
+```
+
+-   The users burn the most calories between 5:00 PM and 7:00 PM
+
+-   Calories burnt and exercise are correlated, as the hours when people exercise the most they also burn more calories as it can be seen in the following chart.
+
+    ```{r}
+    hourly_calories %>% 
+     
+      ggplot(aes(x = hourly_steps$StepTotal , y = Calories)) +
+      geom_point() +geom_smooth() +
+      labs(title = "hourly calories burnt vs hourly steps") + 
+      theme(plot.title = element_text(hjust = 0.5)) +
+      ylab("Calories burnt") + xlab("")
+
+    ```
+
+The $R^2$ is a metric that enables to know how much variation in one variable is explained by other variable.
+
+```{r}
+# Correlation index
+cor(hourly_calories$Calories,hourly_steps$StepTotal )^2
+```
+
+This means that when people walk more, more calories are burnt, however, walking just explains a 66.4% of the variation in the calories burning process; so there's other factors such as healthy habits and metabolism.
+
+## Calories suggestions
+
+![](https://cdn-prod.medicalnewstoday.com/content/images/articles/245/245588/choosing-the-right-food.jpg)
+
+Bellabeap should offer the client some tips to follow a consistent routine depending on a goal of calories established by the user, as well as including weight goals using calories data.
+
+# Sleep analysis
+
+Other factor that bellabeat app help to keep track is sleeping. Based on the sleep time of bellabeat users, it could be handy to make some suggestions.
+
+In the following chunk of code we display summary statistics for the sleep data.
+
+```{r}
+daily_sleep %>%
+  select(TotalMinutesAsleep, TotalTimeInBed) %>% 
+  summary()
+```
+
+-   bellabeat users sleep on average 7 hours and 12 minutes, however 25% of bellabeat users sleep 6 hours or less.
+
+-   Time in bed and sleeping are alike, because most of the time bellabeat users are sleeping in their beds.
+
+    ```{r}
+    daily_sleep %>% 
+      group_by(day) %>%
+      summarize(med_sleep = median(hours)) %>% 
+      
+    ggplot(aes(x = day, y= med_sleep)) +
+             geom_histogram(stat = "identity", fill = "blue4")  +
+      labs(title = "daily sleep") + 
+      theme(plot.title = element_text(hjust = 0.5)) +
+      ylab("sleep hours") + xlab("")
+    ```
+
+    bellabeat users tend to sleep daily 7 hours or more, which means most of them are sleeping enough according to [medical sources](https://www.nectarsleep.com/posts/is-6-hours-of-sleep-enough/).
+
+### Hourly analysis
+
+We can plot the records in a histogram by hour to know bellabeat users sleep distribution.
+
+```{r}
+hourly_sleep %>% 
+  
+  ggplot(aes(x = shour, y = value)) +
+  geom_histogram(stat = "identity", fill = "blue4") +
+    labs(title = "hourly sleep") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylab("sleep records") + xlab("")
+```
+
+-   In the chart above we can see that most people sleep between 11:00 PM and 7:00 AM.
+
+This data doesn't tell us about the quality of sleep, so care must be taken when making conclusions about this data.
+
+## Sleep suggestions
+
+-   It could come in handy that Bellabeap send notifications warning the users to go to sleep based on the wake-up hour set by the user.
+
+-   The app should also give recommendations to the user to improve their sleep quality
+
+# Bellabeat users
+
+The market segment for bellabeat are women that want to keep track of their live style. Bellabeat seeks to empower women with knowledge about their own health and habits.
+
+Bellabeat can improve their applications trough a system of recommendations and tips that will help more women to keep track of their habits and improve their health so that they feel comfortable with Bellabeat app and recommend it to their relatives and friends.
+
+Just like David Velez, CEO of Nubank said, "The best Marketing is a good product".
