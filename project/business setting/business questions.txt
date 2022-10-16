@@ -1,0 +1,18 @@
+1. How active are our clients?
+2. Are our clients sedentary?
+3. If so, when are they sedentary?
+4.How many daily steps did our clients walk?
+5. How much physical activity should they do?
+
+Calories
+1. What is the average amount of calories the clients tend to consume?
+2. What is the average daily calories the clients should burn?
+3. When are the calories burnt the most?
+4. How can we advise our clients for making healthy diets?
+
+Sleep
+- How much, on average, people tend to sleep?
+- What is the distribution for the sleeping time?
+- When people tend to sleep the most?
+- How can we improve the sleep quality of our clients?
+
